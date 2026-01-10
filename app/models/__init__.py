@@ -5,3 +5,4 @@ from .allergy import PatientAllergy, patient_allergen, patient_symptom
 from .asit import AsitPlan, AsitEvent
 from .meds import PatientMedication, MedicationIntakeLog
 from .reminders import Reminder
+from .dicts import Allergen, Symptom, Medication
