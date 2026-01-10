@@ -47,3 +47,13 @@ def create_refresh_token(user_id: int, role: str) -> str:
         expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
         extra={"role": role},
     )
+
+
+from datetime import timedelta
+
+def create_password_reset_token(user_id: int) -> str:
+    return _create_token(
+        subject=str(user_id),
+        token_type="password_reset",
+        expires_delta=timedelta(minutes=30),
+    )
