@@ -20,4 +20,11 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = "Allergy Tracker <no-reply@example.com>"
     FRONTEND_BASE_URL: str = "http://localhost:3000"
     
+
+    BACKEND_CORS_ORIGINS: list[str] = [
+        "http://localhost:8000",
+        "http://localhost:5173",
+    ]
+
+
 settings = Settings()

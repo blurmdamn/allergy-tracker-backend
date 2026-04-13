@@ -1,28 +1,27 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from jose import JWTError, jwt
 from sqlalchemy import select
-
-from jose import jwt, JWTError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import get_db, get_current_user
+from app.core.deps import get_current_user, get_db
+from app.core.emails import send_email
 from app.core.security import (
+    create_access_token,
+    create_password_reset_token,
+    create_refresh_token,
     hash_password,
     verify_password,
-    create_access_token,
-    create_refresh_token,
-    create_password_reset_token,
 )
-from app.core.emails import send_email
 from app.models.users import User
 from app.schemas.users import (
+    ForgotPasswordRequest,
+    RefreshRequest,
+    ResetPasswordRequest,
+    TokenPair,
+    UserLogin,
     UserOut,
     UserRegister,
-    UserLogin,
-    TokenPair,
-    RefreshRequest,
-    ForgotPasswordRequest,
-    ResetPasswordRequest,
 )
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -30,20 +29,15 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 
 @router.post("/register", response_model=UserOut)
 async def register(payload: UserRegister, db: AsyncSession = Depends(get_db)):
-    # проверяем email
     res = await db.execute(select(User).where(User.email == payload.email))
     existing = res.scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # admin через публичный register запрещаем
-    if payload.role not in ("patient", "doctor"):
-        raise HTTPException(status_code=400, detail="role must be 'patient' or 'doctor'")
-
     user = User(
         email=payload.email,
         password_hash=hash_password(payload.password),
-        role=payload.role,
+        role="patient",
         is_active=True,
     )
     db.add(user)
@@ -71,12 +65,12 @@ async def login(payload: UserLogin, db: AsyncSession = Depends(get_db)):
 
 @router.post("/refresh", response_model=TokenPair)
 async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Stateless refresh (без хранения refresh-токенов в БД).
-    Для MVP ок. Позже можно добавить хранение/отзыв refresh токенов.
-    """
     try:
-        data = jwt.decode(payload.refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        data = jwt.decode(
+            payload.refresh_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )
         if data.get("type") != "refresh":
             raise HTTPException(status_code=401, detail="Invalid refresh token")
 
@@ -84,7 +78,6 @@ async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
     except (JWTError, ValueError, TypeError):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    # доп. защита: проверяем, что пользователь существует и активен
     res = await db.execute(select(User).where(User.id == user_id))
     user = res.scalar_one_or_none()
     if not user or not user.is_active:
@@ -102,14 +95,9 @@ async def me(user: User = Depends(get_current_user)):
 
 @router.post("/forgot-password")
 async def forgot_password(payload: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Всегда отвечает одинаково, чтобы не палить существование email.
-    Если пользователь найден и активен — отправляем письмо со ссылкой сброса.
-    """
     res = await db.execute(select(User).where(User.email == payload.email))
     user = res.scalar_one_or_none()
 
-    # одинаковый ответ всегда
     generic_resp = {"message": "If the email exists, a reset link was sent"}
 
     if not user or not user.is_active:
@@ -118,7 +106,6 @@ async def forgot_password(payload: ForgotPasswordRequest, db: AsyncSession = Dep
     token = create_password_reset_token(user.id)
     reset_link = f"{settings.FRONTEND_BASE_URL}/reset-password?token={token}"
 
-    # отправка через EMAIL_PROVIDER (sendgrid/console)
     await send_email(
         to_email=payload.email,
         subject="Сброс пароля — Allergy Tracker",

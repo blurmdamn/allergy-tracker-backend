@@ -1,7 +1,7 @@
 from datetime import date
 from pydantic import BaseModel, Field
 
-class PatientAllergyOut(BaseModel):
+class AllergyOut(BaseModel):
     symptoms_start_date: date | None
 
     # месяцы 1..12 (мультивыбор)
@@ -14,7 +14,7 @@ class PatientAllergyOut(BaseModel):
     allergen_codes: list[str] = Field(default_factory=list)
     symptom_codes: list[str] = Field(default_factory=list)
 
-class PatientAllergyUpdate(BaseModel):
+class AllergyUpdate(BaseModel):
     symptoms_start_date: date | None = None
     active_months: list[int] | None = None
     frequency: str | None = None
