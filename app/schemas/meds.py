@@ -1,52 +1,33 @@
-from datetime import date
+from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
 
 class PatientMedicationCreate(BaseModel):
     medication_code: str
-    dose_text: str | None = None
-    times_per_day: int | None = Field(default=None, ge=1)
-    interval_hours: int | None = Field(default=None, ge=1)
     started_at: date | None = None
-    ended_at: date | None = None
-
-
-class PatientMedicationUpdate(BaseModel):
-    medication_code: str | None = None
-    dose_text: str | None = None
-    times_per_day: int | None = Field(default=None, ge=1)
-    interval_hours: int | None = Field(default=None, ge=1)
-    started_at: date | None = None
-    ended_at: date | None = None
-    is_active: bool | None = None
-
-
-class PatientMedicationOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    medication_code: str
     dose_text: str | None = None
     times_per_day: int | None = None
     interval_hours: int | None = None
-    started_at: date | None = None
-    ended_at: date | None = None
+
+
+class PatientMedicationOut(BaseModel):
+    id: int
+    medication_code: str
     is_active: bool
+    started_at: date | None
+    ended_at: date | None
+    dose_text: str | None
+    times_per_day: int | None
+    interval_hours: int | None
 
 
 class MedicationIntakeLogCreate(BaseModel):
-    intake_date: date
-    tablets_per_day: int | None = Field(default=None, ge=1)
-    effect: str | None = None
+    dose_taken: int | None = None
+    effect: str | None = None  # good / partial / none
     note: str | None = None
 
 
-class MedicationIntakeLogOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
+class MedicationIntakeLogOut(MedicationIntakeLogCreate):
     id: int
-    intake_date: date
-    tablets_per_day: int | None = None
-    effect: str | None = None
-    note: str | None = None
+    logged_at: datetime

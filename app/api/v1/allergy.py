@@ -1,22 +1,35 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, delete, insert
+from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_db, get_current_user
-from app.models.users import User
-from app.models.allergy import PatientAllergy, patient_allergen, patient_symptom
+from app.core.deps import get_current_user, get_db
+from app.models.allergy import (
+    PatientAllergy,
+    PatientAllergyMonth,
+    patient_allergen,
+    patient_symptom,
+)
 from app.models.dicts import Allergen, Symptom
+from app.models.users import User
 from app.schemas.allergy import AllergyOut, AllergyUpdate
 
 router = APIRouter(prefix="/me", tags=["Me"])
 
 
 def _normalize_months(months: list[int]) -> list[int]:
-    # уберём дубликаты и отсортируем
     uniq = sorted(set(months))
     if any(m < 1 or m > 12 for m in uniq):
         raise HTTPException(status_code=400, detail="active_months must be in range 1..12")
     return uniq
+
+
+async def _get_active_months(db: AsyncSession, user_id: int) -> list[int]:
+    res = await db.execute(
+        select(PatientAllergyMonth.month_no)
+        .where(PatientAllergyMonth.user_id == user_id)
+        .order_by(PatientAllergyMonth.month_no.asc())
+    )
+    return list(res.scalars().all())
 
 
 @router.get("/allergy", response_model=AllergyOut)
@@ -36,7 +49,8 @@ async def get_my_allergy(
             symptom_codes=[],
         )
 
-    # получаем выбранные аллергены по связующей таблице
+    active_months = await _get_active_months(db, user.id)
+
     res_a = await db.execute(
         select(Allergen.code)
         .join(patient_allergen, patient_allergen.c.allergen_id == Allergen.id)
@@ -45,7 +59,6 @@ async def get_my_allergy(
     )
     allergen_codes = list(res_a.scalars().all())
 
-    # получаем выбранные симптомы по связующей таблице
     res_s = await db.execute(
         select(Symptom.code)
         .join(patient_symptom, patient_symptom.c.symptom_id == Symptom.id)
@@ -56,7 +69,7 @@ async def get_my_allergy(
 
     return AllergyOut(
         symptoms_start_date=allergy.symptoms_start_date,
-        active_months=allergy.active_months or [],
+        active_months=active_months,
         frequency=allergy.frequency,
         allergen_codes=allergen_codes,
         symptom_codes=symptom_codes,
@@ -75,8 +88,8 @@ async def update_my_allergy(
     if not allergy:
         allergy = PatientAllergy(user_id=user.id)
         db.add(allergy)
+        await db.flush()
 
-    # простые поля
     if payload.symptoms_start_date is not None:
         allergy.symptoms_start_date = payload.symptoms_start_date
 
@@ -86,15 +99,15 @@ async def update_my_allergy(
         allergy.frequency = payload.frequency
 
     if payload.active_months is not None:
-        allergy.active_months = _normalize_months(payload.active_months)
+        months = _normalize_months(payload.active_months)
+        await db.execute(delete(PatientAllergyMonth).where(PatientAllergyMonth.user_id == user.id))
+        if months:
+            db.add_all([PatientAllergyMonth(user_id=user.id, month_no=m) for m in months])
 
-    # --- аллерген-коды (мультивыбор) ---
     if payload.allergen_codes is not None:
         if len(payload.allergen_codes) == 0:
-            # очистка
             await db.execute(delete(patient_allergen).where(patient_allergen.c.user_id == user.id))
         else:
-            # найдём allergen_id по code
             res_ids = await db.execute(
                 select(Allergen.id, Allergen.code).where(Allergen.code.in_(payload.allergen_codes))
             )
@@ -105,15 +118,12 @@ async def update_my_allergy(
                 raise HTTPException(status_code=400, detail=f"Unknown allergen codes: {missing}")
 
             allergen_ids = [aid for (aid, _) in rows]
-
-            # удалим старые и вставим новые
             await db.execute(delete(patient_allergen).where(patient_allergen.c.user_id == user.id))
             await db.execute(
                 insert(patient_allergen),
                 [{"user_id": user.id, "allergen_id": aid} for aid in allergen_ids],
             )
 
-    # --- symptom-коды (мультивыбор) ---
     if payload.symptom_codes is not None:
         if len(payload.symptom_codes) == 0:
             await db.execute(delete(patient_symptom).where(patient_symptom.c.user_id == user.id))
@@ -128,7 +138,6 @@ async def update_my_allergy(
                 raise HTTPException(status_code=400, detail=f"Unknown symptom codes: {missing}")
 
             symptom_ids = [sid for (sid, _) in rows]
-
             await db.execute(delete(patient_symptom).where(patient_symptom.c.user_id == user.id))
             await db.execute(
                 insert(patient_symptom),
@@ -136,6 +145,4 @@ async def update_my_allergy(
             )
 
     await db.commit()
-
-    # возвращаем обновлённое через GET-логику (чтобы вернуть коды)
     return await get_my_allergy(user=user, db=db)

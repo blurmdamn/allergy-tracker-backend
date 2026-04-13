@@ -10,6 +10,7 @@ class UserOut(BaseModel):
 class UserRegister(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
+    role: str = "patient"
 
 
 class UserLogin(BaseModel):

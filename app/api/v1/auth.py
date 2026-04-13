@@ -34,6 +34,9 @@ async def register(payload: UserRegister, db: AsyncSession = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    if payload.role != "patient":
+        raise HTTPException(status_code=400, detail="Only role 'patient' is allowed")
+
     user = User(
         email=payload.email,
         password_hash=hash_password(payload.password),
@@ -66,14 +69,9 @@ async def login(payload: UserLogin, db: AsyncSession = Depends(get_db)):
 @router.post("/refresh", response_model=TokenPair)
 async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
     try:
-        data = jwt.decode(
-            payload.refresh_token,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM],
-        )
+        data = jwt.decode(payload.refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         if data.get("type") != "refresh":
             raise HTTPException(status_code=401, detail="Invalid refresh token")
-
         user_id = int(data.get("sub"))
     except (JWTError, ValueError, TypeError):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
@@ -97,7 +95,6 @@ async def me(user: User = Depends(get_current_user)):
 async def forgot_password(payload: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(User).where(User.email == payload.email))
     user = res.scalar_one_or_none()
-
     generic_resp = {"message": "If the email exists, a reset link was sent"}
 
     if not user or not user.is_active:
@@ -112,7 +109,7 @@ async def forgot_password(payload: ForgotPasswordRequest, db: AsyncSession = Dep
         html=f"""
         <p>Вы запросили сброс пароля.</p>
         <p>Ссылка действительна ограниченное время.</p>
-        <p><a href="{reset_link}">Сбросить пароль</a></p>
+        <p><a href=\"{reset_link}\">Сбросить пароль</a></p>
         <p>Если это были не вы — просто игнорируйте письмо.</p>
         """,
         text=f"Сброс пароля: {reset_link}",
@@ -127,7 +124,6 @@ async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depen
         data = jwt.decode(payload.token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         if data.get("type") != "password_reset":
             raise HTTPException(status_code=400, detail="Invalid token")
-
         user_id = int(data.get("sub"))
     except (JWTError, ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid or expired token")
