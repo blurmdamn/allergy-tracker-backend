@@ -36,43 +36,56 @@ SYMPTOMS = [
 ]
 
 MEDICATIONS = [
-    # Таблетки
-    {"code": "cetirizine", "name": "цетиризин", "form": "tablet"},
-    {"code": "levocetirizine", "name": "левоцетиризин", "form": "tablet"},
-    {"code": "loratadine", "name": "лоратадин", "form": "tablet"},
-    {"code": "desloratadine", "name": "дезлоратадин", "form": "tablet"},
-    {"code": "bilastine", "name": "биластин", "form": "tablet"},
-    {"code": "fexofenadine", "name": "фексофенадин", "form": "tablet"},
-    {"code": "ebastine", "name": "эбастин", "form": "tablet"},
-    {"code": "rupatadine", "name": "рупатадин", "form": "tablet"},
-    {"code": "montelukast", "name": "монтелукаст", "form": "tablet"},
+    {"code": "cetirizine", "name": "Цетиризин", "form": "tablet"},
+    {"code": "levocetirizine", "name": "Левоцетиризин", "form": "tablet"},
+    {"code": "loratadine", "name": "Лоратадин", "form": "tablet"},
+    {"code": "desloratadine", "name": "Дезлоратадин", "form": "tablet"},
+    {"code": "bilastine", "name": "Биластин", "form": "tablet"},
+    {"code": "fexofenadine", "name": "Фексофенадин", "form": "tablet"},
+    {"code": "ebastine", "name": "Эбастин", "form": "tablet"},
+    {"code": "rupatadine", "name": "Рупатадин", "form": "tablet"},
+    {"code": "montelukast", "name": "Монтелукаст", "form": "tablet"},
 
-    # Подъязычные капли
-    {"code": "roxall_sulgen", "name": "Роксаль Сульген", "form": "sl_drops"},
-    {"code": "immunotek_oraltek", "name": "Инмунотек Оралтек", "form": "sl_drops"},
+    {"code": "roxall_sulgen", "name": "Роксаль Сульген", "form": "sublingual_drops"},
+    {"code": "immunotek_oraltek", "name": "Инмунотек Оралтек", "form": "sublingual_drops"},
 
-    # Подъязычные таблетки
-    {"code": "lofharma", "name": "Лофарма", "form": "sl_tablet"},
-    {"code": "antipollin", "name": "антиполлин", "form": "sl_tablet"},
+    {"code": "lofarma", "name": "Лофарма", "form": "sublingual_tablet"},
+    {"code": "antipollin", "name": "Антиполлин", "form": "sublingual_tablet"},
 
-    # Инъекции
     {"code": "roxall_clastoid", "name": "Роксаль Кластоид", "form": "injection"},
     {"code": "immunotek_clustek", "name": "Инмунотек Клюстек", "form": "injection"},
 ]
 
+
 async def upsert_all(session, model, rows, conflict_cols: list[str]):
+    if not rows:
+        return
+
     stmt = insert(model).values(rows)
-    update_cols = {c: getattr(stmt.excluded, c) for c in rows[0].keys() if c not in conflict_cols}
-    stmt = stmt.on_conflict_do_update(index_elements=conflict_cols, set_=update_cols)
+    update_cols = {
+        c: getattr(stmt.excluded, c)
+        for c in rows[0].keys()
+        if c not in conflict_cols
+    }
+    stmt = stmt.on_conflict_do_update(
+        index_elements=conflict_cols,
+        set_=update_cols,
+    )
     await session.execute(stmt)
+
 
 async def main():
     async with AsyncSessionLocal() as session:
-        await upsert_all(session, Allergen, ALLERGENS, conflict_cols=["code"])
-        await upsert_all(session, Symptom, SYMPTOMS, conflict_cols=["code"])
-        await upsert_all(session, Medication, MEDICATIONS, conflict_cols=["code"])
-        await session.commit()
-    print("✅ Dictionaries seeded (allergens, symptoms, medications).")
+        try:
+            await upsert_all(session, Allergen, ALLERGENS, conflict_cols=["code"])
+            await upsert_all(session, Symptom, SYMPTOMS, conflict_cols=["code"])
+            await upsert_all(session, Medication, MEDICATIONS, conflict_cols=["code"])
+            await session.commit()
+            print("✅ Dictionaries seeded (allergens, symptoms, medications).")
+        except Exception:
+            await session.rollback()
+            raise
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -5,3 +5,4 @@ from .asit import AsitPlan, AsitEvent
 from .meds import PatientMedication, MedicationIntakeLog
 from .reminders import Reminder
 from .dicts import Allergen, Symptom, Medication
+from .checkins import CheckinQuestion, DailyCheckin, DailyCheckinAnswer, DailyMedicationUsage
