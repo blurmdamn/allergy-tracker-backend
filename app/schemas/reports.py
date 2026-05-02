@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime
+
 from pydantic import BaseModel
 
 
@@ -32,8 +33,8 @@ class ReportMedicationCourseOut(BaseModel):
 class ReportMedicationLogOut(BaseModel):
     id: int
     patient_medication_id: int
-    logged_at: str
-    tablets_per_day: int | None = None
+    logged_at: datetime
+    dose_taken: int | None = None
     effect: str | None = None
     note: str | None = None
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user, get_db
@@ -97,7 +98,11 @@ async def get_my_report_summary(
         select(PatientMedication, Medication)
         .join(Medication, Medication.id == PatientMedication.medication_id)
         .where(PatientMedication.user_id == user.id)
-        .order_by(PatientMedication.is_active.desc(), PatientMedication.started_at.desc(), PatientMedication.id.desc())
+        .order_by(
+            PatientMedication.is_active.desc(),
+            PatientMedication.started_at.desc(),
+            PatientMedication.id.desc(),
+        )
     )
     med_courses_rows = med_courses_res.all()
 
@@ -143,8 +148,8 @@ async def get_my_report_summary(
             ReportMedicationLogOut(
                 id=log.id,
                 patient_medication_id=log.patient_medication_id,
-                logged_at=log.logged_at.isoformat(),
-                tablets_per_day=log.tablets_per_day,
+                logged_at=log.logged_at,
+                dose_taken=log.dose_taken,
                 effect=log.effect,
                 note=log.note,
             )

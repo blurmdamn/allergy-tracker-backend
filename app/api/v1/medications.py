@@ -16,7 +16,7 @@ from app.schemas.meds import (
 
 router = APIRouter(prefix="/me/medications", tags=["Medications"])
 
-ALLOWED_EFFECTS = {"good", "partial", "none", "side_effects"}
+ALLOWED_EFFECTS = {"good", "partial", "none"}
 
 
 async def _resolve_medication_id(code: str | None, db: AsyncSession) -> int | None:
@@ -30,7 +30,10 @@ async def _resolve_medication_id(code: str | None, db: AsyncSession) -> int | No
     return medication.id
 
 
-async def _get_medication_code_by_id(medication_id: int | None, db: AsyncSession) -> str | None:
+async def _get_medication_code_by_id(
+    medication_id: int | None,
+    db: AsyncSession,
+) -> str | None:
     if medication_id is None:
         return None
 
@@ -102,7 +105,10 @@ async def create_my_medication(
     medication_id = await _resolve_medication_id(payload.medication_code, db)
 
     if payload.started_at and payload.ended_at and payload.ended_at < payload.started_at:
-        raise HTTPException(status_code=400, detail="ended_at cannot be earlier than started_at")
+        raise HTTPException(
+            status_code=400,
+            detail="ended_at cannot be earlier than started_at",
+        )
 
     item = PatientMedication(
         user_id=user.id,
@@ -127,7 +133,11 @@ async def get_my_medication(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    item = await _get_owned_patient_medication_or_404(med_id=med_id, user_id=user.id, db=db)
+    item = await _get_owned_patient_medication_or_404(
+        med_id=med_id,
+        user_id=user.id,
+        db=db,
+    )
     return await _serialize_patient_medication(item, db)
 
 
@@ -138,7 +148,11 @@ async def update_my_medication(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    item = await _get_owned_patient_medication_or_404(med_id=med_id, user_id=user.id, db=db)
+    item = await _get_owned_patient_medication_or_404(
+        med_id=med_id,
+        user_id=user.id,
+        db=db,
+    )
 
     if payload.medication_code is not None:
         item.medication_id = await _resolve_medication_id(payload.medication_code, db)
@@ -159,7 +173,10 @@ async def update_my_medication(
         item.ended_at = payload.ended_at
 
     if item.started_at and item.ended_at and item.ended_at < item.started_at:
-        raise HTTPException(status_code=400, detail="ended_at cannot be earlier than started_at")
+        raise HTTPException(
+            status_code=400,
+            detail="ended_at cannot be earlier than started_at",
+        )
 
     if payload.is_active is not None:
         item.is_active = payload.is_active
@@ -181,7 +198,7 @@ async def list_my_medication_logs(
     res = await db.execute(
         select(MedicationIntakeLog)
         .where(MedicationIntakeLog.patient_medication_id == med_id)
-        .order_by(MedicationIntakeLog.intake_date.desc(), MedicationIntakeLog.id.desc())
+        .order_by(MedicationIntakeLog.logged_at.desc(), MedicationIntakeLog.id.desc())
     )
     logs = res.scalars().all()
     return [MedicationIntakeLogOut.model_validate(log) for log in logs]
@@ -199,13 +216,13 @@ async def create_my_medication_log(
     if payload.effect is not None and payload.effect not in ALLOWED_EFFECTS:
         raise HTTPException(
             status_code=400,
-            detail="effect must be one of: good, partial, none, side_effects",
+            detail="effect must be one of: good, partial, none",
         )
 
     log = MedicationIntakeLog(
         patient_medication_id=med_id,
-        intake_date=payload.intake_date,
-        tablets_per_day=payload.tablets_per_day,
+        logged_at=payload.intake_date or None,
+        dose_taken=payload.dose_taken,
         effect=payload.effect,
         note=payload.note,
     )

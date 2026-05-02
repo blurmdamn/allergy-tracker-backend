@@ -10,6 +10,7 @@ from .medications import router as medications_router
 from .profiles import router as profiles_router
 from .reminders import router as reminders_router
 from .reports import router as reports_router
+from .dashboard import router as dashboard_router
 
 api_router = APIRouter()
 
@@ -24,3 +25,4 @@ api_router.include_router(medications_router)
 api_router.include_router(reminders_router)
 api_router.include_router(checkins_router)
 api_router.include_router(reports_router)
+api_router.include_router(dashboard_router)

@@ -9,7 +9,7 @@ from app.schemas.reminders import ReminderCreate, ReminderOut, ReminderUpdate
 
 router = APIRouter(prefix="/me/reminders", tags=["Reminders"])
 
-ALLOWED_KINDS = {"asit_visit", "medication", "daily_checkin", "custom"}
+ALLOWED_TYPES = {"asit_visit", "daily_checkin", "questionnaire", "custom"}
 
 
 async def _get_owned_reminder_or_404(
@@ -53,15 +53,15 @@ async def create_my_reminder(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if payload.kind not in ALLOWED_KINDS:
+    if payload.type not in ALLOWED_TYPES:
         raise HTTPException(
             status_code=400,
-            detail="kind must be one of: asit_visit, medication, daily_checkin, custom",
+            detail="type must be one of: asit_visit, daily_checkin, questionnaire, custom",
         )
 
     reminder = Reminder(
         user_id=user.id,
-        kind=payload.kind,
+        type=payload.type,
         message=payload.message,
         scheduled_at=payload.scheduled_at,
         active_months=payload.active_months,
@@ -101,13 +101,13 @@ async def update_my_reminder(
         db=db,
     )
 
-    if payload.kind is not None:
-        if payload.kind not in ALLOWED_KINDS:
+    if payload.type is not None:
+        if payload.type not in ALLOWED_TYPES:
             raise HTTPException(
                 status_code=400,
-                detail="kind must be one of: asit_visit, medication, daily_checkin, custom",
+                detail="type must be one of: asit_visit, daily_checkin, questionnaire, custom",
             )
-        reminder.kind = payload.kind
+        reminder.type = payload.type
 
     if payload.message is not None:
         reminder.message = payload.message
