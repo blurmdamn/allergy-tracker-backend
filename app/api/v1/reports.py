@@ -7,7 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user, get_db
-from app.models.allergy import PatientAllergy, patient_allergen, patient_symptom
+from app.models.allergy import (
+    PatientAllergy,
+    PatientAllergyMonth,
+    patient_allergen,
+    patient_symptom,
+)
 from app.models.asit import AsitEvent, AsitPlan
 from app.models.checkins import DailyCheckin
 from app.models.dicts import Allergen, Medication, Symptom
@@ -32,6 +37,7 @@ router = APIRouter(prefix="/me/report", tags=["Reports"])
 def _round2(value: float | None) -> float:
     if value is None:
         return 0.0
+
     return round(float(value), 2)
 
 
@@ -43,7 +49,10 @@ async def get_my_report_summary(
     db: AsyncSession = Depends(get_db),
 ):
     if date_to < date_from:
-        raise HTTPException(status_code=400, detail="date_to cannot be earlier than date_from")
+        raise HTTPException(
+            status_code=400,
+            detail="date_to cannot be earlier than date_from",
+        )
 
     # -------------------------
     # Profile
@@ -67,9 +76,21 @@ async def get_my_report_summary(
     )
     allergy = allergy_res.scalar_one_or_none()
 
+    months_res = await db.execute(
+        select(PatientAllergyMonth.month_no)
+        .where(PatientAllergyMonth.user_id == user.id)
+        .order_by(PatientAllergyMonth.month_no.asc())
+    )
+    active_months = list(months_res.scalars().all())
+
     allergens_res = await db.execute(
         select(Allergen.name)
-        .select_from(patient_allergen.join(Allergen, patient_allergen.c.allergen_id == Allergen.id))
+        .select_from(
+            patient_allergen.join(
+                Allergen,
+                patient_allergen.c.allergen_id == Allergen.id,
+            )
+        )
         .where(patient_allergen.c.user_id == user.id)
         .order_by(Allergen.name.asc())
     )
@@ -77,7 +98,12 @@ async def get_my_report_summary(
 
     symptoms_res = await db.execute(
         select(Symptom.name)
-        .select_from(patient_symptom.join(Symptom, patient_symptom.c.symptom_id == Symptom.id))
+        .select_from(
+            patient_symptom.join(
+                Symptom,
+                patient_symptom.c.symptom_id == Symptom.id,
+            )
+        )
         .where(patient_symptom.c.user_id == user.id)
         .order_by(Symptom.name.asc())
     )
@@ -85,7 +111,7 @@ async def get_my_report_summary(
 
     allergy_out = ReportAllergyOut(
         symptoms_start_date=allergy.symptoms_start_date if allergy else None,
-        active_months=allergy.active_months if allergy else None,
+        active_months=active_months,
         frequency=allergy.frequency if allergy else None,
         allergens=allergen_names,
         symptoms=symptom_names,
@@ -129,6 +155,7 @@ async def get_my_report_summary(
     # Medication logs in period
     # -------------------------
     medication_logs: list[ReportMedicationLogOut] = []
+
     if user_course_ids:
         dt_from = datetime.combine(date_from, datetime.min.time())
         dt_to = datetime.combine(date_to, datetime.max.time())
@@ -140,7 +167,10 @@ async def get_my_report_summary(
                 MedicationIntakeLog.logged_at >= dt_from,
                 MedicationIntakeLog.logged_at <= dt_to,
             )
-            .order_by(MedicationIntakeLog.logged_at.desc(), MedicationIntakeLog.id.desc())
+            .order_by(
+                MedicationIntakeLog.logged_at.desc(),
+                MedicationIntakeLog.id.desc(),
+            )
         )
         logs = logs_res.scalars().all()
 
@@ -170,7 +200,11 @@ async def get_my_report_summary(
         .outerjoin(Allergen, Allergen.id == AsitPlan.target_allergen_id)
         .outerjoin(Medication, Medication.id == AsitPlan.medication_id)
         .where(AsitPlan.user_id == user.id)
-        .order_by(AsitPlan.is_active.desc(), AsitPlan.created_at.desc(), AsitPlan.id.desc())
+        .order_by(
+            AsitPlan.is_active.desc(),
+            AsitPlan.created_at.desc(),
+            AsitPlan.id.desc(),
+        )
     )
     asit_plan_rows = asit_plans_res.all()
 
@@ -196,6 +230,7 @@ async def get_my_report_summary(
     # ASIT events in period
     # -------------------------
     asit_events: list[ReportAsitEventOut] = []
+
     if plan_ids:
         events_res = await db.execute(
             select(AsitEvent)
@@ -262,29 +297,47 @@ async def get_my_report_summary(
 
     avg_nasal = _round2(
         sum(item.nasal_score for item in checkin_rows) / filled_checkins_count
-        if filled_checkins_count else 0
+        if filled_checkins_count
+        else 0
     )
     avg_ocular = _round2(
         sum(item.ocular_score for item in checkin_rows) / filled_checkins_count
-        if filled_checkins_count else 0
+        if filled_checkins_count
+        else 0
     )
     avg_symptom_total = _round2(
-        sum(item.symptom_total_score for item in checkin_rows) / filled_checkins_count
-        if filled_checkins_count else 0
+        sum(item.symptom_total_score for item in checkin_rows)
+        / filled_checkins_count
+        if filled_checkins_count
+        else 0
     )
     avg_day_total = _round2(
         sum(item.day_total_score for item in checkin_rows) / filled_checkins_count
-        if filled_checkins_count else 0
+        if filled_checkins_count
+        else 0
     )
 
-    max_symptom_total = max((item.symptom_total_score for item in checkin_rows), default=0)
-    max_day_total = max((item.day_total_score for item in checkin_rows), default=0)
-    severe_days_count = sum(1 for item in checkin_rows if item.severity_level == "severe")
+    max_symptom_total = max(
+        (item.symptom_total_score for item in checkin_rows),
+        default=0,
+    )
+    max_day_total = max(
+        (item.day_total_score for item in checkin_rows),
+        default=0,
+    )
+
+    severe_days_count = sum(
+        1 for item in checkin_rows if item.severity_level == "severe"
+    )
 
     asit_events_total = len(asit_events)
-    asit_events_done = sum(1 for e in asit_events if e.status == "done")
-    asit_events_skipped = sum(1 for e in asit_events if e.status == "skipped")
-    asit_events_rescheduled = sum(1 for e in asit_events if e.status == "rescheduled")
+    asit_events_done = sum(1 for event in asit_events if event.status == "done")
+    asit_events_skipped = sum(
+        1 for event in asit_events if event.status == "skipped"
+    )
+    asit_events_rescheduled = sum(
+        1 for event in asit_events if event.status == "rescheduled"
+    )
 
     stats = ReportStatsOut(
         days_in_period=days_in_period,
