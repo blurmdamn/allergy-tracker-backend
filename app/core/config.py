@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     FRONTEND_BASE_URL: str = "http://localhost:3000"
     
 
+# telegram
+    TELEGRAM_BOT_TOKEN: str | None = None
+    TELEGRAM_BOT_USERNAME: str | None = None
+    TELEGRAM_ENABLED: bool = False
+    TELEGRAM_POLLING_ENABLED: bool = True
+    TELEGRAM_POLLING_INTERVAL_SECONDS: int = 5
+    TELEGRAM_REMINDER_INTERVAL_SECONDS: int = 60
+
     BACKEND_CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
