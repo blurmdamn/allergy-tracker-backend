@@ -10,6 +10,7 @@ from app.schemas.reminders import ReminderCreate, ReminderOut, ReminderUpdate
 router = APIRouter(prefix="/me/reminders", tags=["Reminders"])
 
 ALLOWED_TYPES = {"asit_visit", "daily_checkin", "questionnaire", "custom"}
+ALLOWED_REPEAT_TYPES = {"none", "daily", "weekly", "monthly"}
 
 
 async def _get_owned_reminder_or_404(
@@ -24,9 +25,27 @@ async def _get_owned_reminder_or_404(
         )
     )
     reminder = res.scalar_one_or_none()
+
     if not reminder:
         raise HTTPException(status_code=404, detail="Reminder not found")
+
     return reminder
+
+
+def _validate_type(value: str) -> None:
+    if value not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="type must be one of: asit_visit, daily_checkin, questionnaire, custom",
+        )
+
+
+def _validate_repeat_type(value: str) -> None:
+    if value not in ALLOWED_REPEAT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="repeat_type must be one of: none, daily, weekly, monthly",
+        )
 
 
 @router.get("", response_model=list[ReminderOut])
@@ -43,7 +62,9 @@ async def list_my_reminders(
             Reminder.id.desc(),
         )
     )
+
     reminders = res.scalars().all()
+
     return [ReminderOut.model_validate(reminder) for reminder in reminders]
 
 
@@ -53,20 +74,20 @@ async def create_my_reminder(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if payload.type not in ALLOWED_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail="type must be one of: asit_visit, daily_checkin, questionnaire, custom",
-        )
+    _validate_type(payload.type)
+    _validate_repeat_type(payload.repeat_type)
 
     reminder = Reminder(
         user_id=user.id,
         type=payload.type,
+        repeat_type=payload.repeat_type,
         message=payload.message,
         scheduled_at=payload.scheduled_at,
         active_months=payload.active_months,
         is_active=True,
+        sent_at=None,
     )
+
     db.add(reminder)
     await db.commit()
     await db.refresh(reminder)
@@ -85,6 +106,7 @@ async def get_my_reminder(
         user_id=user.id,
         db=db,
     )
+
     return ReminderOut.model_validate(reminder)
 
 
@@ -102,12 +124,12 @@ async def update_my_reminder(
     )
 
     if payload.type is not None:
-        if payload.type not in ALLOWED_TYPES:
-            raise HTTPException(
-                status_code=400,
-                detail="type must be one of: asit_visit, daily_checkin, questionnaire, custom",
-            )
+        _validate_type(payload.type)
         reminder.type = payload.type
+
+    if payload.repeat_type is not None:
+        _validate_repeat_type(payload.repeat_type)
+        reminder.repeat_type = payload.repeat_type
 
     if payload.message is not None:
         reminder.message = payload.message
@@ -115,11 +137,26 @@ async def update_my_reminder(
     if payload.scheduled_at is not None:
         reminder.scheduled_at = payload.scheduled_at
 
-    if payload.active_months is not None:
+        # Если пользователь перенёс дату, считаем, что это новое ожидание отправки.
+        # Для повторяемых sent_at остаётся как "последняя успешная отправка",
+        # но для одноразовых после переноса лучше снова разрешить отправку.
+        if reminder.repeat_type == "none":
+            reminder.sent_at = None
+
+    # Важно: здесь проверяем именно field_set, чтобы можно было очистить active_months = None.
+    if "active_months" in payload.model_fields_set:
         reminder.active_months = payload.active_months
 
     if payload.is_active is not None:
         reminder.is_active = payload.is_active
+
+        # Если пользователь снова включает одноразовое напоминание,
+        # разрешаем ему отправиться повторно в указанное scheduled_at.
+        if payload.is_active and reminder.repeat_type == "none":
+            reminder.sent_at = None
+
+    if payload.sent_at is not None:
+        reminder.sent_at = payload.sent_at
 
     await db.commit()
     await db.refresh(reminder)

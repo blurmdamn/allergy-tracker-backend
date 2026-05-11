@@ -53,7 +53,7 @@ def is_reminder_active_for_month(reminder: Reminder, now: datetime) -> bool:
 
 
 async def send_due_reminders(db: AsyncSession) -> int:
-    now = datetime.utcnow()
+    now = datetime.now()
 
     res = await db.execute(
         select(Reminder)

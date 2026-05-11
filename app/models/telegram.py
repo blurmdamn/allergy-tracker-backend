@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -16,6 +24,7 @@ class TelegramAccount(Base):
     https://t.me/<bot_username>?start=<link_token>
 
     chat_id сохраняется после того, как пользователь нажал Start в боте.
+    language_code используется для мультиязычных сообщений бота.
     """
 
     __tablename__ = "telegram_accounts"
@@ -38,13 +47,20 @@ class TelegramAccount(Base):
 
     username: Mapped[str | None] = mapped_column(String(128), nullable=True)
     first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    language_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     link_token: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     linked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,
